@@ -30,7 +30,7 @@ export const auth = betterAuth({
 
   secret: process.env.AUTH_SECRET,
   baseURL: process.env.AUTH_BASE_URL,
-  basePath: '/auth',
+  basePath: '/api/auth',
 
   // List of trusted origins that may receive Set-Cookie + send credentialed
   // requests. Synced with the API's CORS allowlist (WEB_ORIGIN).
