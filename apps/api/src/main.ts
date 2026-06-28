@@ -19,11 +19,10 @@ async function bootstrap() {
 
   app.use(helmet());
 
-  // Mount Better-Auth at /api/auth/*. The path matches `AUTH_BASE_URL`'s
-  // pathname so Better-Auth's internal basePath resolution matches the
-  // request URL. The Vite dev proxy forwards `/api/*` to the API without
-  // rewriting, so the browser-facing URL is the same `/api/auth/*`.
-  app.use('/api/auth', toNodeHandler(auth));
+  // Mount Better-Auth at /auth/*. Better-Auth derives its internal route
+  // prefix from `new URL(AUTH_BASE_URL).pathname`, so `AUTH_BASE_URL` must
+  // end in `/auth` for this to match.
+  app.use('/auth', toNodeHandler(auth));
 
   // Re-enable JSON / form body parsing for every other route.
   app.use(json());
@@ -36,11 +35,6 @@ async function bootstrap() {
       transform: true,
     }),
   );
-
-  // All Nest controllers live under `/api/*` so the prefix is consistent
-  // with the Better-Auth mount above and with the Vite dev proxy (which
-  // forwards `/api/*` without rewriting).
-  app.setGlobalPrefix('api');
 
   // Comma-separated list of allowed origins, e.g.
   //   WEB_ORIGIN=https://synctip.com,https://www.synctip.com

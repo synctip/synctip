@@ -22,15 +22,13 @@ export default defineConfig({
     },
   },
   server: {
-    // Forward API requests to the NestJS app during dev so the browser
-    // never has to deal with CORS. We do NOT rewrite the path — the API
-    // mounts everything under `/api/...` so Better-Auth's `basePath`
-    // resolves consistently on both sides.
+    // Forward API routes to the NestJS app during dev so the browser
+    // treats them as same-origin (no CORS, cookies work). Each API path
+    // is proxied without rewriting — the API mounts them at root, so
+    // browser and server agree on the URL shape.
     proxy: {
-      "/api": {
-        target: "http://localhost:3000",
-        changeOrigin: true,
-      },
+      "/auth": { target: "http://localhost:3000", changeOrigin: true },
+      "/health": { target: "http://localhost:3000", changeOrigin: true },
     },
   },
 });
