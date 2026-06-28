@@ -59,16 +59,16 @@ jobs:
         run: cd packages/db && bunx prisma migrate deploy
 
       - name: Lint (web)
-        run: bun --cwd apps/web run lint
+        run: cd apps/web && bun run lint
 
       - name: Lint (api)
-        run: bun --cwd apps/api run lint
+        run: cd apps/api && bun run lint
 
       - name: Test (api)
-        run: bun --cwd apps/api run test
+        run: cd apps/api && bun run test
 
       - name: Build web (includes typecheck via tsc -b)
-        run: bun --cwd apps/web run build
+        run: cd apps/web && bun run build
 
       - name: Typecheck api
         run: cd apps/api && bunx tsc --noEmit
