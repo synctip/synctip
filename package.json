@@ -10,10 +10,21 @@
   "scripts": {
     "dev:web": "bun --cwd apps/web dev",
     "dev:api": "bun --cwd apps/api start:dev",
-    "dev": "bun run dev:web & bun run dev:api"
+    "dev": "bun run dev:web & bun run dev:api",
+    "prepare": "husky"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8"
+  },
+  "lint-staged": {
+    "apps/api/**/*.ts": [
+      "bunx eslint --fix --config apps/api/eslint.config.mjs"
+    ],
+    "apps/web/**/*.{ts,tsx}": [
+      "bunx oxlint"
+    ]
   },
   "peerDependencies": {
     "typescript": "^5"

@@ -16,7 +16,7 @@ describe('HealthService', () => {
 
   beforeEach(async () => {
     prismaMock = {
-      $queryRaw: mock(async () => [{ ok: 1 }]),
+      $queryRaw: mock(() => Promise.resolve([{ ok: 1 }])),
     };
 
     const module = await Test.createTestingModule({
@@ -40,9 +40,9 @@ describe('HealthService', () => {
   });
 
   it('returns fail when datastore throws', async () => {
-    prismaMock.$queryRaw = mock(async () => {
-      throw new Error('connection refused');
-    });
+    prismaMock.$queryRaw = mock(() =>
+      Promise.reject(new Error('connection refused')),
+    );
 
     const result = await service.check();
 
