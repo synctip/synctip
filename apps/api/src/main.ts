@@ -19,6 +19,22 @@ async function bootstrap() {
 
   app.use(helmet());
 
+  // Comma-separated list of allowed origins, e.g.
+  //   WEB_ORIGIN=https://synctip.com,https://www.synctip.com
+  // In dev the Vite proxy makes requests same-origin so CORS isn't hit.
+  const origins =
+    process.env.WEB_ORIGIN?.split(',')
+      .map((o) => o.trim())
+      .filter(Boolean) ?? [];
+
+  // CORS must be registered BEFORE the Better-Auth handler so preflight and
+  // ACAO headers are applied to /auth/* requests too.
+  app.enableCors({
+    origin: origins.length > 0 ? origins : false,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  });
+
   // Mount Better-Auth at /auth/*. Better-Auth derives its internal route
   // prefix from `new URL(AUTH_BASE_URL).pathname`, so `AUTH_BASE_URL` must
   // end in `/auth` for this to match.
@@ -35,20 +51,6 @@ async function bootstrap() {
       transform: true,
     }),
   );
-
-  // Comma-separated list of allowed origins, e.g.
-  //   WEB_ORIGIN=https://synctip.com,https://www.synctip.com
-  // In dev the Vite proxy makes requests same-origin so CORS isn't hit.
-  const origins =
-    process.env.WEB_ORIGIN?.split(',')
-      .map((o) => o.trim())
-      .filter(Boolean) ?? [];
-
-  app.enableCors({
-    origin: origins.length > 0 ? origins : false,
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  });
 
   await app.listen(process.env.PORT ?? 3000);
 }

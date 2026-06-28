@@ -23,7 +23,7 @@ export function UserMenu() {
     return <div className="h-9 w-20 animate-pulse rounded-md bg-muted" />;
   }
 
-  if (!session) {
+  if (!session?.user) {
     return (
       <Button asChild size="sm">
         <Link to="/login">Sign in</Link>
