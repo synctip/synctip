@@ -10,12 +10,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@synctip/api-client": "workspace:*",
+    "@tanstack/react-query": "^5.101.2",
+    "@tanstack/react-router": "^1.170.16",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@babel/core": "^7.29.7",
     "@rolldown/plugin-babel": "^0.2.3",
+    "@tanstack/react-query-devtools": "^5.101.2",
+    "@tanstack/react-router-devtools": "^1.167.0",
+    "@tanstack/router-plugin": "^1.168.18",
     "@types/babel__core": "^7.20.5",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
