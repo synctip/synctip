@@ -1,0 +1,48 @@
+{
+  // Use the workspace's own TS install so all packages resolve consistently.
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+
+  // Prefer non-relative ("@synctip/db") imports over deep relative paths.
+  "typescript.preferences.importModuleSpecifier": "non-relative",
+  "typescript.preferences.preferTypeOnlyAutoImports": true,
+
+  // Restart-free updates when files move.
+  "typescript.updateImportsOnFileMove.enabled": "always",
+  "javascript.updateImportsOnFileMove.enabled": "always",
+
+  // Hide build/cache noise from the explorer & search.
+  "files.exclude": {
+    "**/.bun": true,
+    "**/dist": true,
+    "**/.turbo": true,
+    "**/generated/prisma": false
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/generated/prisma": true,
+    "**/.bun": true
+  },
+
+  // Format on save with Prettier.
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+
+  // ESLint flat config support is on by default in modern ESLint; be explicit.
+  "eslint.useFlatConfig": true,
+  "eslint.workingDirectories": [
+    { "pattern": "apps/*" },
+    { "pattern": "packages/*" }
+  ],
+
+  // Prisma extension — auto-format schema.prisma.
+  "[prisma]": {
+    "editor.defaultFormatter": "Prisma.prisma",
+    "editor.formatOnSave": true
+  },
+
+  // Bun test runner picks up *.test.ts and *.spec.ts; scope discovery to source dirs.
+  "bun.runtime": "bun",
+  "testing.automaticallyOpenTestResults": "neverOpen"
+}

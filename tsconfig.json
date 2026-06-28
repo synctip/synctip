@@ -25,6 +25,12 @@
     // Some stricter flags (disabled by default)
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false
+    "noPropertyAccessFromIndexSignature": false,
+
+    // NestJS / DI: required so Bun emits design:paramtypes metadata
+    // when this tsconfig is picked up (e.g. running `bun test` from the repo root
+    // or via the VS Code Testing side panel).
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   }
 }
