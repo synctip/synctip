@@ -3,6 +3,15 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:web": "bun --cwd apps/web dev",
+    "dev:api": "bun --cwd apps/api start:dev",
+    "dev": "bun run dev:web & bun run dev:api"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
