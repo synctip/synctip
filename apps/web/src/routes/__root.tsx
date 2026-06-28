@@ -3,6 +3,8 @@ import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
 import { ThemeToggle } from "@/components/theme-toggle";
+import { UserMenu } from "@/components/user-menu";
+import { Toaster } from "@/components/ui/sonner";
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -29,12 +31,16 @@ function RootLayout() {
               Health
             </Link>
           </nav>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <UserMenu />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-6 py-10">
         <Outlet />
       </main>
+      <Toaster />
       <TanStackRouterDevtools />
       <ReactQueryDevtools initialIsOpen={false} />
     </div>
