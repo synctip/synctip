@@ -1,0 +1,46 @@
+name: staging-health
+
+# Gate promotion to production: every PR targeting `main` must show that
+# the staging environment is currently healthy before it can merge.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: staging-health-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      STAGING_API_URL: https://api-staging.synctip.com
+      STAGING_WEB_URL: https://web-staging.synctip.com
+
+    steps:
+      - name: Probe staging api /health/ready
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            body="$(curl -fsSL --max-time 10 "$STAGING_API_URL/health/ready" || true)"
+            status="$(printf '%s' "$body" | jq -r '.status // empty')"
+            if [ "$status" = "pass" ]; then
+              echo "api: pass"
+              printf '%s\n' "$body" | jq .
+              exit 0
+            fi
+            echo "attempt $i: api status='${status:-no response}', retrying..."
+            sleep 10
+          done
+          echo "staging api did not return status=pass after retries"
+          printf '%s\n' "${body:-<empty>}"
+          exit 1
+
+      - name: Probe staging web
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 10 -o /dev/null -w "web http %{http_code}\n" \
+            "$STAGING_WEB_URL/"
