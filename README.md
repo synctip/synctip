@@ -81,4 +81,3 @@ Response format follows <https://inadarei.github.io/rfc-healthcheck/>.
 ## Pre-commit hook
 
 `husky` + `lint-staged` runs `eslint --fix` (api) and `oxlint` (web) on staged files. To bypass in an emergency: `git commit --no-verify`. Don't make a habit of it.
-

@@ -3,13 +3,29 @@ initSentry();
 
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { toNodeHandler } from 'better-auth/node';
+import { json, urlencoded } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { auth } from './auth/auth';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    // Disable Nest's body parser so Better-Auth can read the raw request
+    // body. We re-mount the body parser AFTER the auth handler below.
+    bodyParser: false,
+  });
 
   app.use(helmet());
+
+  // Mount Better-Auth at /auth/* (the Vite dev proxy strips /api before
+  // forwarding, so the browser-facing URL is /api/auth/*).
+  app.use('/auth', toNodeHandler(auth));
+
+  // Re-enable JSON / form body parsing for every other route.
+  app.use(json());
+  app.use(urlencoded({ extended: true }));
 
   app.useGlobalPipes(
     new ValidationPipe({
