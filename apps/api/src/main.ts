@@ -17,6 +17,9 @@ async function bootstrap() {
     bodyParser: false,
   });
 
+  // Trust Render's reverse proxy so req.ip / X-Forwarded-* resolve correctly.
+  app.set('trust proxy', 1);
+
   app.use(helmet());
 
   // Comma-separated list of allowed origins, e.g.

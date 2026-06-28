@@ -3,7 +3,7 @@ import { PrismaClient } from '@synctip/db';
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { phoneNumber } from 'better-auth/plugins';
-import { sendOtpSms } from './twilio';
+import { sendOtp, verifyOtp } from './twilio';
 
 /**
  * Better-Auth instance.
@@ -31,6 +31,14 @@ export const auth = betterAuth({
   secret: process.env.AUTH_SECRET,
   baseURL: process.env.AUTH_BASE_URL,
   basePath: '/auth',
+
+  // Behind Render's proxy the real client IP is in X-Forwarded-For. Without
+  // this, Better-Auth's rate limiter falls back to one shared bucket per path.
+  advanced: {
+    ipAddress: {
+      ipAddressHeaders: ['x-forwarded-for'],
+    },
+  },
 
   // List of trusted origins that may receive Set-Cookie + send credentialed
   // requests. Synced with the API's CORS allowlist (WEB_ORIGIN).
@@ -60,8 +68,12 @@ export const auth = betterAuth({
 
   plugins: [
     phoneNumber({
-      sendOTP: async ({ phoneNumber: to, code }) => {
-        await sendOtpSms(to, code);
+      sendOTP: async ({ phoneNumber: to }) => {
+        // Twilio Verify generates its own code; ignore Better-Auth's.
+        await sendOtp(to);
+      },
+      verifyOTP: async ({ phoneNumber: to, code }) => {
+        return verifyOtp(to, code);
       },
       // signUp on first successful OTP if the phone number is unknown
       signUpOnVerification: {
