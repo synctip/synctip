@@ -1,0 +1,86 @@
+name: stage-deploy-healthy
+
+# Runs after every push to `stage` (including merge commits from
+# `develop -> stage` PRs). Two-phase verification:
+#
+#   Phase 1 (optional, opt-in via RENDER_API_KEY secret):
+#     Query Render's API for the deploy of this commit. If a deploy was
+#     triggered, wait for it to reach `live`. If it fails, fail the
+#     workflow. If no deploy was triggered within ~60s (e.g. Render Build
+#     Filter excluded this commit), skip phase 1 and continue.
+#
+#   Phase 2 (always runs):
+#     Probe https://api-stage.synctip.com/health and assert
+#       - status == "pass"
+#       - tier   == "stage"     (catches APP_ENV misconfiguration)
+#     Probe https://stage.synctip.com and assert HTTP 200.
+#
+# This check is the gate for `stage -> beta` promotion: configure
+# branch protection on `beta` to require the `stage-deploy-healthy`
+# status check on the PR head commit.
+
+on:
+  push:
+    branches: [stage]
+  workflow_dispatch: {}
+
+concurrency:
+  # Don't cancel: every push should be verified individually so we never
+  # promote an un-verified commit upward.
+  group: stage-deploy-healthy-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  stage-deploy-healthy:
+    name: stage-deploy-healthy
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    env:
+      EXPECTED_TIER: stage
+      API_URL: https://api-stage.synctip.com
+      WEB_URL: https://stage.synctip.com
+      API_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID_API_STAGE }}
+      WEB_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID_WEB_STAGE }}
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify Render deploy (api-stage)
+        run: bash .github/scripts/verify-render-deploy.sh api-stage "$API_SERVICE_ID" "$GITHUB_SHA"
+
+      - name: Verify Render deploy (web-stage)
+        run: bash .github/scripts/verify-render-deploy.sh web-stage "$WEB_SERVICE_ID" "$GITHUB_SHA"
+
+      - name: Assert api /health
+        run: |
+          set -uo pipefail
+          echo "Expecting status=pass tier=$EXPECTED_TIER"
+
+          body=""
+          for i in $(seq 1 18); do
+            body="$(curl -fsSL --max-time 10 "$API_URL/health" || true)"
+            status="$(printf '%s' "$body"  | jq -r '.status    // empty' 2>/dev/null || true)"
+            tier="$(printf '%s' "$body"    | jq -r '.tier      // empty' 2>/dev/null || true)"
+            release="$(printf '%s' "$body" | jq -r '.releaseId // empty' 2>/dev/null || true)"
+
+            if [ "$status" = "pass" ] && [ "$tier" = "$EXPECTED_TIER" ]; then
+              echo "OK  api healthy on attempt $i (releaseId=$release)"
+              printf '%s\n' "$body" | jq .
+              exit 0
+            fi
+
+            echo "attempt $i/18: status=${status:-?} tier=${tier:-?} releaseId=${release:-?}"
+            sleep 10
+          done
+
+          echo "FAIL stage-deploy-healthy: api did not report healthy after ~3 minutes"
+          printf '%s\n' "${body:-<no response>}" | jq . 2>/dev/null \
+            || echo "${body:-<no response>}"
+          exit 1
+
+      - name: Probe web origin
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 10 -o /dev/null -w "web http %{http_code}\n" "$WEB_URL/"

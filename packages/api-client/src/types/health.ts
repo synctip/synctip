@@ -11,6 +11,12 @@
 
 export type HealthStatus = "pass" | "fail" | "warn";
 
+/**
+ * Deployment tier the service is running in. See docs/DEPLOYMENT.md.
+ * Sourced from the `APP_ENV` environment variable on the server.
+ */
+export type EnvironmentTier = "production" | "beta" | "stage" | "develop";
+
 export interface HealthCheck {
   componentId?: string;
   componentType?: "component" | "datastore" | "system" | (string & {});
@@ -27,6 +33,8 @@ export interface HealthResponse {
   status: HealthStatus;
   version?: string;
   releaseId?: string;
+  /** Deployment tier the service is running in (production/beta/stage/develop). */
+  tier?: EnvironmentTier;
   notes?: string[];
   output?: string;
   checks?: Record<string, HealthCheck[]>;

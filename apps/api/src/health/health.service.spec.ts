@@ -59,4 +59,45 @@ describe('HealthService', () => {
     expect(result.checks?.['db:responseTime']).toBeUndefined();
     expect(prismaMock.$queryRaw).toHaveBeenCalledTimes(0);
   });
+
+  it('omits tier when APP_ENV is unset', async () => {
+    const result = await service.check();
+
+    expect(result.tier).toBeUndefined();
+    expect(result.description).toBe('synctip API health');
+  });
+
+  it('reflects APP_ENV in the response tier and description', async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        HealthService,
+        { provide: PrismaService, useValue: prismaMock },
+        { provide: ConfigService, useValue: buildConfig({ APP_ENV: 'stage' }) },
+      ],
+    }).compile();
+    const staged = module.get(HealthService);
+
+    const result = await staged.check();
+
+    expect(result.tier).toBe('stage');
+    expect(result.description).toBe('synctip API health (stage)');
+  });
+
+  it('ignores an invalid APP_ENV value', async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        HealthService,
+        { provide: PrismaService, useValue: prismaMock },
+        {
+          provide: ConfigService,
+          useValue: buildConfig({ APP_ENV: 'wat' }),
+        },
+      ],
+    }).compile();
+    const bad = module.get(HealthService);
+
+    const result = await bad.check();
+
+    expect(result.tier).toBeUndefined();
+  });
 });

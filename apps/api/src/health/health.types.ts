@@ -4,6 +4,7 @@
  * guaranteed to agree on the shape.
  */
 export type {
+  EnvironmentTier,
   HealthCheck,
   HealthResponse,
   HealthStatus,
