@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [develop, stage, beta, main]
   push:
-    branches: [develop, main]
+    branches: [develop, stage, beta, main]
 
 # Cancel older runs on the same branch / PR so we don't queue stale work.
 concurrency:

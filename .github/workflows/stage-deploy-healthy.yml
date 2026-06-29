@@ -1,0 +1,73 @@
+name: stage-deploy-healthy
+
+# Runs after every push to `stage` (including merge commits from
+# `develop -> stage` PRs). Waits for Render to redeploy api-stage with
+# the new commit, then asserts:
+#   - /health reports status=pass
+#   - /health reports tier=stage      (catches APP_ENV misconfiguration)
+#   - /health reports releaseId equal to the first 7 chars of github.sha
+#     (catches "old deploy still serving" — Render not done yet, or build
+#     failed silently and the previous instance kept running)
+#   - The web origin returns HTTP 200
+#
+# This check is the gate for `stage -> beta` promotion: configure
+# branch protection on `beta` to require the `stage-deploy-healthy`
+# status check on the PR head commit.
+
+on:
+  push:
+    branches: [stage]
+  workflow_dispatch: {}
+
+concurrency:
+  # Don't cancel: every push should be verified individually so we never
+  # promote an un-verified commit upward.
+  group: stage-deploy-healthy-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  stage-deploy-healthy:
+    name: stage-deploy-healthy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      EXPECTED_TIER: stage
+      API_URL: https://api-stage.synctip.com
+      WEB_URL: https://stage.synctip.com
+
+    steps:
+      - name: Wait for Render and assert api /health
+        run: |
+          set -uo pipefail
+          expected_sha="${GITHUB_SHA:0:7}"
+          echo "Expecting tier=$EXPECTED_TIER, releaseId=$expected_sha"
+
+          body=""
+          for i in $(seq 1 72); do
+            body="$(curl -fsSL --max-time 10 "$API_URL/health" || true)"
+            status="$(printf '%s' "$body"  | jq -r '.status    // empty' 2>/dev/null || true)"
+            tier="$(printf '%s' "$body"    | jq -r '.tier      // empty' 2>/dev/null || true)"
+            release="$(printf '%s' "$body" | jq -r '.releaseId // empty' 2>/dev/null || true)"
+
+            if [ "$status" = "pass" ] \
+               && [ "$tier" = "$EXPECTED_TIER" ] \
+               && [ "$release" = "$expected_sha" ]; then
+              echo "OK  api healthy on attempt $i"
+              printf '%s\n' "$body" | jq .
+              exit 0
+            fi
+
+            echo "attempt $i/72: status=${status:-?} tier=${tier:-?} releaseId=${release:-?}"
+            sleep 10
+          done
+
+          echo "FAIL stage-deploy-healthy timed out after ~12 minutes"
+          printf '%s\n' "${body:-<no response>}" | jq . 2>/dev/null \
+            || echo "${body:-<no response>}"
+          exit 1
+
+      - name: Probe web origin
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 10 -o /dev/null -w "web http %{http_code}\n" "$WEB_URL/"

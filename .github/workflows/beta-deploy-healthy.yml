@@ -1,0 +1,64 @@
+name: beta-deploy-healthy
+
+# Runs after every push to `beta` (including merge commits from
+# `stage -> beta` PRs). Same probe shape as stage-deploy-healthy.
+#
+# This check is the gate for `beta -> main` promotion: configure
+# branch protection on `main` to require the `beta-deploy-healthy`
+# status check on the PR head commit.
+
+on:
+  push:
+    branches: [beta]
+  workflow_dispatch: {}
+
+concurrency:
+  group: beta-deploy-healthy-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  beta-deploy-healthy:
+    name: beta-deploy-healthy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      EXPECTED_TIER: beta
+      API_URL: https://api-beta.synctip.com
+      WEB_URL: https://beta.synctip.com
+
+    steps:
+      - name: Wait for Render and assert api /health
+        run: |
+          set -uo pipefail
+          expected_sha="${GITHUB_SHA:0:7}"
+          echo "Expecting tier=$EXPECTED_TIER, releaseId=$expected_sha"
+
+          body=""
+          for i in $(seq 1 72); do
+            body="$(curl -fsSL --max-time 10 "$API_URL/health" || true)"
+            status="$(printf '%s' "$body"  | jq -r '.status    // empty' 2>/dev/null || true)"
+            tier="$(printf '%s' "$body"    | jq -r '.tier      // empty' 2>/dev/null || true)"
+            release="$(printf '%s' "$body" | jq -r '.releaseId // empty' 2>/dev/null || true)"
+
+            if [ "$status" = "pass" ] \
+               && [ "$tier" = "$EXPECTED_TIER" ] \
+               && [ "$release" = "$expected_sha" ]; then
+              echo "OK  api healthy on attempt $i"
+              printf '%s\n' "$body" | jq .
+              exit 0
+            fi
+
+            echo "attempt $i/72: status=${status:-?} tier=${tier:-?} releaseId=${release:-?}"
+            sleep 10
+          done
+
+          echo "FAIL beta-deploy-healthy timed out after ~12 minutes"
+          printf '%s\n' "${body:-<no response>}" | jq . 2>/dev/null \
+            || echo "${body:-<no response>}"
+          exit 1
+
+      - name: Probe web origin
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 10 -o /dev/null -w "web http %{http_code}\n" "$WEB_URL/"
