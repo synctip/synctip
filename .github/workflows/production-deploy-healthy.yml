@@ -25,8 +25,8 @@ jobs:
 
     env:
       EXPECTED_TIER: production
-      API_URL: https://api.synctip.com
-      WEB_URL: https://synctip.com
+      API_URL: ${{ vars.API_URL_PROD }}
+      WEB_URL: ${{ vars.WEB_URL_PROD }}
       API_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID_API_PROD }}
       WEB_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID_WEB_PROD }}
       RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
