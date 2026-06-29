@@ -1,0 +1,57 @@
+name: dependabot-bun-lockfile
+
+# Dependabot doesn't understand bun.lock — it only bumps package.json + the
+# npm-style lockfile. After every Dependabot push, this workflow regenerates
+# bun.lock so `bun install --frozen-lockfile` in CI stops failing on a
+# package.json/bun.lock mismatch.
+#
+# Uses pull_request_target so the workflow definition is read from the base
+# branch (= trusted) and the GITHUB_TOKEN can write to the PR head branch.
+# The push itself does NOT re-trigger CI (GITHUB_TOKEN pushes never do), so
+# after this commit lands you may need to click "Re-run failed jobs" on the
+# CI run for that PR — or comment `@dependabot rebase` if you want a fresh
+# bot push that does trigger CI.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: dependabot-bun-lockfile-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  update-lockfile:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Regenerate bun.lock
+        run: bun install --no-frozen-lockfile
+
+      - name: Commit and push if changed
+        run: |
+          if git diff --quiet -- bun.lock; then
+            echo "bun.lock already in sync with package.json"
+            exit 0
+          fi
+          git config user.name  "dependabot[bot]"
+          git config user.email "49699333+dependabot[bot]@users.noreply.github.com"
+          git add bun.lock
+          git commit -m "chore(deps): regenerate bun.lock for package.json bump"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
