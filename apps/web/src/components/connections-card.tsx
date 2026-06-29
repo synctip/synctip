@@ -201,8 +201,8 @@ export function ConnectionsCard({ user, onChanged }: Props) {
   async function linkGoogle() {
     setLinkingGoogle(true);
     try {
-      // Absolute URL — when web and api are on different origins, a relative
-      // path is resolved against the API base (would land on api-staging.*).
+      // Absolute URL — the web and api live on different origins, so a
+      // relative path would resolve against the API base.
       const callbackURL =
         typeof window !== "undefined"
           ? `${window.location.origin}/dashboard`

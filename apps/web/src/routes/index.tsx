@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CalendarRange, Coins, LineChart, Users } from "lucide-react";
+import { Divide, History, Smartphone, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -23,18 +23,16 @@ function HomePage() {
           <span className="text-3xl font-semibold tracking-tight">Synctip</span>
         </div>
         <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
-          Run your shifts and split your tips without the spreadsheet.
+          Close the shift. Everything else happens by itself.
         </h1>
         <p className="max-w-2xl text-lg text-muted-foreground">
-          Synctip is the place your team plans the week, records what came in,
-          and sees exactly what they earned - clearly, fairly, on time.
+          Synctip turns the 20 minutes of after-shift paperwork into one tap.
+          Hours, splits, envelopes, notifications - done while you're still
+          taking off your apron.
         </p>
-        <div className="flex flex-wrap gap-3">
-          <Button asChild size="lg">
-            <Link to="/login">Get started</Link>
-          </Button>
-          <Button asChild size="lg" variant="outline">
-            <a href="#how-it-works">See how it works</a>
+        <div className="flex">
+          <Button asChild size="lg" className="w-full sm:w-auto sm:min-w-65">
+            <Link to="/login">Start Now</Link>
           </Button>
         </div>
       </section>
@@ -44,34 +42,35 @@ function HomePage() {
         <div className="space-y-2">
           <p className="text-sm font-medium text-primary">How it works</p>
           <h2 className="text-3xl font-semibold tracking-tight">
-            Four things, done well.
+            Built around one button.
           </h2>
           <p className="max-w-2xl text-muted-foreground">
-            Everything Synctip does serves one of two goals: reduce friction, or
-            make money clearer. If a feature does neither, it isn't here.
+            Managers should manage people, not spreadsheets. Everything around
+            the shift - the math, the messages, the records - happens the
+            moment you close it.
           </p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Feature
-            icon={CalendarRange}
-            title="Plan shifts"
-            body="Draft the week, publish to the team, and lock it when the shift is done. Everyone sees the same schedule."
+            icon={Sparkles}
+            title="One tap to close"
+            body="Press Close Shift. Synctip calculates hours, splits the tips, generates envelopes, and notifies the team. You go home."
           />
           <Feature
-            icon={Coins}
-            title="Split tips fairly"
-            body="Cash, card, and POS in one place. Your splitting rules run automatically - and every member can see how their share was calculated."
+            icon={Divide}
+            title="Splits without the math"
+            body="Total tips divided by total hours. Every member sees their hours, the rate, and exactly how their share was calculated."
           />
           <Feature
-            icon={Users}
-            title="Manage your team"
-            body="Invite members by role per branch. Run multiple locations without losing track of who works where."
+            icon={Smartphone}
+            title="Everyone knows, instantly"
+            body="Staff get notified the moment an envelope is ready. No screenshots, no WhatsApp threads, no asking the manager."
           />
           <Feature
-            icon={LineChart}
-            title="See the numbers"
-            body="Tips by period, attendance, workload. Reports built for owners and managers - not for chart galleries."
+            icon={History}
+            title="Every shift, traceable"
+            body="Reports, envelopes, payouts - all kept and searchable. The audit trail your spreadsheet never had."
           />
         </div>
       </section>
@@ -84,28 +83,17 @@ function HomePage() {
         />
         <div className="relative space-y-5">
           <h2 className="text-3xl font-semibold tracking-tight">
-            Ready when you are.
+            Free to start. No credit card.
           </h2>
           <p className="mx-auto max-w-md text-muted-foreground">
-            Sign in with your phone number or Google account. Setup takes less
-            than a minute.
+            Sign up in seconds with your phone number or Google account. Bring
+            your team in when you're ready.
           </p>
           <div className="flex justify-center">
-            <Button asChild size="lg">
-              <Link to="/login">Sign in</Link>
+            <Button asChild size="lg" className="min-w-55">
+              <Link to="/login">Start Now</Link>
             </Button>
           </div>
-          <p className="mx-auto max-w-md text-xs text-muted-foreground">
-            Signing in shares your name, email, and profile picture from Google
-            so we can create your Synctip account. Read our{" "}
-            <Link
-              to="/privacy"
-              className="underline underline-offset-4 hover:text-foreground"
-            >
-              Privacy Policy
-            </Link>
-            .
-          </p>
         </div>
       </section>
     </div>

@@ -98,7 +98,9 @@ export const auth = betterAuth({
         if (existing) {
           // `auth` is referenced via late-binding closure; safe because hooks
           // only run on live requests, after `auth` is fully constructed.
-          const session = await auth.api.getSession({ headers: ctx.headers });
+          const session = ctx?.headers
+            ? await auth.api.getSession({ headers: ctx.headers })
+            : null;
           if (session?.user?.id && session.user.id !== existing.id) {
             throw new APIError('BAD_REQUEST', {
               message:

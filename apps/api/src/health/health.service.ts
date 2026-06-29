@@ -1,7 +1,47 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { HealthCheck, HealthResponse, HealthStatus } from './health.types';
+import {
+  EnvironmentTier,
+  HealthCheck,
+  HealthResponse,
+  HealthStatus,
+} from './health.types';
+
+const ENV_TIERS: readonly EnvironmentTier[] = [
+  'production',
+  'beta',
+  'stage',
+  'develop',
+] as const;
+
+function isEnvironmentTier(value: unknown): value is EnvironmentTier {
+  return (
+    typeof value === 'string' &&
+    (ENV_TIERS as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Produce a human-readable error message that includes any details Prisma
+ * and the underlying pg driver hide on `cause` / `code`. Without this,
+ * `err.message` for a connection failure is just the Prisma header line
+ * with no actual reason.
+ */
+function describeError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+
+  const parts: string[] = [];
+  let current: unknown = err;
+  while (current instanceof Error) {
+    const code = (current as { code?: unknown }).code;
+    const codeSuffix = typeof code === 'string' ? ` [${code}]` : '';
+    const msg = current.message.trim();
+    if (msg) parts.push(`${msg}${codeSuffix}`);
+    current = (current as { cause?: unknown }).cause;
+  }
+  return parts.join(' <- ') || err.message;
+}
 
 @Injectable()
 export class HealthService {
@@ -66,7 +106,7 @@ export class HealthService {
             componentType: 'datastore',
             status: 'fail',
             time: now(),
-            output: err instanceof Error ? err.message : String(err),
+            output: describeError(err),
           },
         ],
       };
@@ -133,18 +173,31 @@ export class HealthService {
       this.config.get<string>('RENDER_SERVICE_NAME') ??
       'synctip-api';
 
+    // Deployment tier (production/beta/stage/develop). See docs/DEPLOYMENT.md.
+    // Each Render service explicitly sets APP_ENV; unset/invalid is omitted
+    // so legacy consumers don't see a misleading default.
+    const rawTier = this.config.get<string>('APP_ENV');
+    const tier: EnvironmentTier | undefined = isEnvironmentTier(rawTier)
+      ? rawTier
+      : undefined;
+
     const notes: string[] = [];
     const branch = this.config.get<string>('RENDER_GIT_BRANCH');
     const instance = this.config.get<string>('RENDER_INSTANCE_ID');
     if (branch) notes.push(`branch=${branch}`);
     if (instance) notes.push(`instance=${instance}`);
 
+    const description = tier
+      ? `synctip API health (${tier})`
+      : 'synctip API health';
+
     return {
       status,
       version: this.config.get<string>('SERVICE_VERSION') ?? '1',
       releaseId,
       serviceId,
-      description: 'synctip API health',
+      ...(tier ? { tier } : {}),
+      description,
       ...(notes.length > 0 ? { notes } : {}),
       checks,
     };

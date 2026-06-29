@@ -22,13 +22,11 @@ export default defineConfig({
     },
   },
   server: {
-    // Forward API routes to the NestJS app during dev so the browser
-    // treats them as same-origin (no CORS, cookies work). Each API path
-    // is proxied without rewriting — the API mounts them at root, so
-    // browser and server agree on the URL shape.
-    proxy: {
-      "/auth": { target: "http://localhost:3000", changeOrigin: true },
-      "/health": { target: "http://localhost:3000", changeOrigin: true },
-    },
+    // Bind to all interfaces so the Cloudflare Tunnel and LAN devices can
+    // reach the dev server. Vite still listens on localhost:5173 too.
+    host: true,
+    // Vite blocks unknown Host headers by default to prevent DNS rebinding.
+    // Allow our Cloudflare Tunnel hostname so https://dev.synctip.com works.
+    allowedHosts: ["dev.synctip.com"],
   },
 });

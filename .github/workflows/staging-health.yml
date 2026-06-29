@@ -17,8 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      STAGING_API_URL: https://api-staging.synctip.com
-      STAGING_WEB_URL: https://web-staging.synctip.com
+      STAGING_API_URL: https://api-stage.synctip.com
+      STAGING_WEB_URL: https://stage.synctip.com
 
     steps:
       - name: Probe staging api /health/ready
