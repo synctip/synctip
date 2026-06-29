@@ -4,6 +4,7 @@ import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { phoneNumber } from 'better-auth/plugins';
+import { absorbIfEligible, canAbsorbOrphan } from './account-merge';
 import { sendOtp, verifyOtp } from './twilio';
 
 /**
@@ -25,6 +26,14 @@ const connectionString = process.env.DATABASE_URL ?? '';
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString }),
 });
+
+// The merge helpers are typed against a narrow structural subset of Prisma
+// (so unit tests can pass a tiny in-memory fake). The real PrismaClient is
+// strictly wider, but TypeScript can't see the structural compatibility
+// because Prisma's generated return types depend on the inferred `select`
+// shape. The cast is the boundary between "real Prisma" and "merge surface";
+// the merge module is fully typed internally.
+const mergePrisma = prisma as unknown as Parameters<typeof absorbIfEligible>[0];
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
@@ -106,12 +115,111 @@ export const auth = betterAuth({
     },
   },
 
+  // Hooks that implement the "thin orphan absorb" merge from #20 — when a
+  // user tries to link an identity (Google OAuth or phone) that's already
+  // attached to another `User` row whose **only** sign-in method is that
+  // identity, silently transfer it to the current user and delete the
+  // orphan. The orphan has no other auth path, so this is non-destructive:
+  // nobody is being locked out. The transactional eligibility re-check and
+  // ordering live in `./account-merge.ts`.
+  databaseHooks: {
+    account: {
+      create: {
+        before: async (account) => {
+          // The link flow always sets `userId` to the currently-signed-in
+          // user (the survivor); we rely on that rather than fishing the
+          // session out of ctx (less coupling, fewer null checks).
+          const survivorUserId = account.userId;
+          if (!survivorUserId) return { data: account };
+
+          const existing = await prisma.account.findFirst({
+            where: {
+              providerId: account.providerId,
+              accountId: account.accountId,
+              NOT: { userId: survivorUserId },
+            },
+            select: { userId: true },
+          });
+          if (!existing) return { data: account };
+
+          const outcome = await absorbIfEligible(mergePrisma, {
+            survivorUserId,
+            orphanUserId: existing.userId,
+            contested: {
+              kind: 'account',
+              providerId: account.providerId,
+              accountId: account.accountId,
+            },
+          });
+
+          if (outcome.result === 'absorbed') {
+            // The orphan's account row was reparented to survivor inside the
+            // transaction. Aborting the create avoids a unique-constraint
+            // violation on (providerId, accountId).
+            return false;
+          }
+
+          // Not absorbable (orphan has 2+ identities = a real second human).
+          // Let Better-Auth's own conflict path fire; the client surfaces
+          // it via the friendly toast wired in #19.
+          return { data: account };
+        },
+      },
+    },
+    user: {
+      update: {
+        before: async (data, ctx) => {
+          // Only intervene when phoneNumber is being set to a non-empty
+          // value. Every other user update (name, image, etc.) flows
+          // through unchanged.
+          const newPhone =
+            typeof data.phoneNumber === 'string' && data.phoneNumber
+              ? data.phoneNumber
+              : null;
+          if (!newPhone) return { data };
+
+          const survivorUserId = ctx?.context?.session?.user?.id;
+          if (!survivorUserId) return { data };
+
+          const orphan = await prisma.user.findFirst({
+            where: { phoneNumber: newPhone, NOT: { id: survivorUserId } },
+            select: { id: true },
+          });
+          if (!orphan) return { data };
+
+          const outcome = await absorbIfEligible(mergePrisma, {
+            survivorUserId,
+            orphanUserId: orphan.id,
+            contested: { kind: 'phone', phoneNumber: newPhone },
+          });
+
+          if (outcome.result === 'absorbed') {
+            // Survivor already holds the phone now. Strip `phoneNumber`
+            // from the upcoming update so it doesn't re-set the same
+            // unique value; keep any companion fields like
+            // `phoneNumberVerified` so Better-Auth can mark it verified.
+            const rest = { ...data };
+            delete (rest as Record<string, unknown>).phoneNumber;
+            return { data: rest };
+          }
+
+          // Not absorbable — let the unique constraint fire its existing
+          // error, surfaced to the user by #19.
+          return { data };
+        },
+      },
+    },
+  },
+
   plugins: [
     phoneNumber({
       sendOTP: async ({ phoneNumber: to }, ctx) => {
         // Fail fast before billing Twilio: if a signed-in user is trying to
-        // link a phone that's already attached to a different account, reject
-        // here so we never send the SMS.
+        // link a phone that's already attached to a different account, decide
+        // here whether the eventual verify step would be able to absorb the
+        // orphan (#20). If yes, allow the SMS — the actual merge happens
+        // post-verification in `databaseHooks.user.update.before`. If no,
+        // reject so we never send the SMS.
         const existing = await prisma.user.findFirst({
           where: { phoneNumber: to },
           select: { id: true },
@@ -123,10 +231,17 @@ export const auth = betterAuth({
             ? await auth.api.getSession({ headers: ctx.headers })
             : null;
           if (session?.user?.id && session.user.id !== existing.id) {
-            throw new APIError('BAD_REQUEST', {
-              message:
-                'This phone number is already linked to another account.',
+            const absorbable = await canAbsorbOrphan(mergePrisma, existing.id, {
+              kind: 'phone',
+              phoneNumber: to,
             });
+            if (!absorbable) {
+              throw new APIError('BAD_REQUEST', {
+                message:
+                  'This phone number is already linked to another account.',
+              });
+            }
+            // Fall through — OTP send proceeds; absorb runs on verify.
           }
           // Not signed in => normal sign-in flow for the existing user.
           // Signed in as the same user => re-verification, allow.
