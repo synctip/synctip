@@ -4,10 +4,7 @@
 "use no memo";
 
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { authClient } from "@/lib/auth-client";
@@ -21,74 +18,61 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Separator } from "@/components/ui/separator";
+import { isValidPhoneNumber } from "react-phone-number-input";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
-const phoneSchema = z.object({
-  phoneNumber: z
-    .string()
-    .trim()
-    .regex(/^\+\d{8,15}$/, "Use E.164 format, e.g. +14155552671"),
-});
-
-const codeSchema = z.object({
-  code: z
-    .string()
-    .trim()
-    .regex(/^\d{4,8}$/, "Enter the code you received"),
-});
-
 type Step = "phone" | "code";
+
+const OTP_LENGTH = 6;
 
 function LoginPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
 
-  // Code step uses plain state instead of react-hook-form. The Controller +
-  // Slot + spread chain was preventing keyboard input on this input (see
-  // git history). Plain state side-steps the issue and is fine for a single
-  // numeric field.
   const [code, setCode] = useState("");
   const [codeError, setCodeError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
 
-  const phoneForm = useForm<z.infer<typeof phoneSchema>>({
-    resolver: zodResolver(phoneSchema),
-    defaultValues: { phoneNumber: "" },
-  });
-
-  async function onSendCode(values: z.infer<typeof phoneSchema>) {
-    const { error } = await authClient.phoneNumber.sendOtp({
-      phoneNumber: values.phoneNumber,
-    });
-    if (error) {
-      toast.error(error.message ?? "Failed to send code");
+  async function onSendCode(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!phone || !isValidPhoneNumber(phone)) {
+      setPhoneError("Enter a valid phone number");
       return;
     }
-    setPhone(values.phoneNumber);
-    setCode("");
-    setCodeError(null);
-    setStep("code");
-    toast.success("Code sent");
+    setPhoneError(null);
+    setSending(true);
+    try {
+      const { error } = await authClient.phoneNumber.sendOtp({
+        phoneNumber: phone,
+      });
+      if (error) {
+        toast.error(error.message ?? "Failed to send code");
+        return;
+      }
+      setCode("");
+      setCodeError(null);
+      setStep("code");
+      toast.success("Code sent");
+    } finally {
+      setSending(false);
+    }
   }
 
-  async function onVerify(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const parsed = codeSchema.safeParse({ code });
-    if (!parsed.success) {
-      setCodeError(parsed.error.issues[0]?.message ?? "Invalid code");
+  async function verify(submittedCode: string) {
+    if (submittedCode.length !== OTP_LENGTH) {
+      setCodeError("Enter the 6-digit code");
       return;
     }
     setCodeError(null);
@@ -96,7 +80,7 @@ function LoginPage() {
     try {
       const { error } = await authClient.phoneNumber.verify({
         phoneNumber: phone,
-        code: parsed.data.code,
+        code: submittedCode,
       });
       if (error) {
         toast.error(error.message ?? "Invalid code");
@@ -107,6 +91,20 @@ function LoginPage() {
     } finally {
       setVerifying(false);
     }
+  }
+
+  // Auto-submit when all 6 digits are entered (covers iOS Messages autofill
+  // and manual paste of the full code).
+  useEffect(() => {
+    if (step === "code" && code.length === OTP_LENGTH && !verifying) {
+      void verify(code);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code, step]);
+
+  async function onCodeSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await verify(code);
   }
 
   async function onGoogle() {
@@ -131,36 +129,36 @@ function LoginPage() {
 
         <CardContent className="space-y-4">
           {step === "phone" ? (
-            <Form {...phoneForm}>
-              <form
-                id="phone-form"
-                onSubmit={phoneForm.handleSubmit(onSendCode)}
-                className="space-y-4"
+            <form
+              id="phone-form"
+              onSubmit={onSendCode}
+              className="space-y-2"
+              noValidate
+            >
+              <label
+                htmlFor="phone"
+                className="text-sm leading-none font-medium select-none"
               >
-                <FormField
-                  control={phoneForm.control}
-                  name="phoneNumber"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Phone number</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="tel"
-                          autoComplete="tel"
-                          placeholder="+14155552671"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </form>
-            </Form>
+                Phone number
+              </label>
+              <PhoneInput
+                id="phone"
+                placeholder="Enter phone number"
+                value={phone}
+                onChange={(v) => {
+                  setPhone(v);
+                  if (phoneError) setPhoneError(null);
+                }}
+                aria-invalid={phoneError ? "true" : "false"}
+              />
+              {phoneError ? (
+                <p className="text-destructive text-sm">{phoneError}</p>
+              ) : null}
+            </form>
           ) : (
             <form
               id="code-form"
-              onSubmit={onVerify}
+              onSubmit={onCodeSubmit}
               className="space-y-2"
               noValidate
             >
@@ -170,22 +168,26 @@ function LoginPage() {
               >
                 Verification code
               </label>
-              <input
+              <InputOTP
                 id="otp-code"
-                name="code"
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                data-form-type="other"
-                data-lpignore="true"
-                data-1p-ignore="true"
-                data-bwignore="true"
-                placeholder="123456"
+                maxLength={OTP_LENGTH}
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
+                onChange={(v) => {
+                  setCode(v);
+                  if (codeError) setCodeError(null);
+                }}
+                autoFocus
+                autoComplete="one-time-code"
+                inputMode="numeric"
                 aria-invalid={codeError ? "true" : "false"}
-                className="h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30"
-              />
+                disabled={verifying}
+              >
+                <InputOTPGroup>
+                  {Array.from({ length: OTP_LENGTH }).map((_, i) => (
+                    <InputOTPSlot key={i} index={i} />
+                  ))}
+                </InputOTPGroup>
+              </InputOTP>
               {codeError ? (
                 <p className="text-destructive text-sm">{codeError}</p>
               ) : null}
@@ -214,9 +216,9 @@ function LoginPage() {
               type="submit"
               form="phone-form"
               className="w-full"
-              disabled={phoneForm.formState.isSubmitting}
+              disabled={sending}
             >
-              {phoneForm.formState.isSubmitting ? "Sending..." : "Send code"}
+              {sending ? "Sending..." : "Send code"}
             </Button>
           ) : (
             <>
@@ -224,7 +226,7 @@ function LoginPage() {
                 type="submit"
                 form="code-form"
                 className="w-full"
-                disabled={verifying}
+                disabled={verifying || code.length !== OTP_LENGTH}
               >
                 {verifying ? "Verifying..." : "Verify"}
               </Button>

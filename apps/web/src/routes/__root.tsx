@@ -12,7 +12,7 @@ export const Route = createRootRoute({
 
 function RootLayout() {
   return (
-    <div className="min-h-svh bg-background text-foreground">
+    <div className="flex min-h-svh flex-col bg-background text-foreground">
       <header className="border-b">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <nav className="flex items-center gap-6 text-sm font-medium">
@@ -37,10 +37,31 @@ function RootLayout() {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-6 py-10">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-10">
         <Outlet />
       </main>
-      <Toaster />
+      <footer className="border-t">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6 text-sm text-muted-foreground">
+          <span>&copy; {new Date().getFullYear()} Synctip</span>
+          <nav className="flex items-center gap-4">
+            <Link
+              to="/privacy"
+              className="transition-colors hover:text-foreground"
+              activeProps={{ className: "text-foreground" }}
+            >
+              Privacy
+            </Link>
+            <Link
+              to="/terms"
+              className="transition-colors hover:text-foreground"
+              activeProps={{ className: "text-foreground" }}
+            >
+              Terms
+            </Link>
+          </nav>
+        </div>
+      </footer>
+      <Toaster richColors position="top-right" />
       <TanStackRouterDevtools />
       <ReactQueryDevtools initialIsOpen={false} />
     </div>

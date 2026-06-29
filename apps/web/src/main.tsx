@@ -6,7 +6,6 @@ import { queryClient } from "./lib/queryClient";
 import { initSentry } from "./lib/sentry";
 import { routeTree } from "./routeTree.gen";
 import { ThemeProvider } from "./components/theme-provider";
-import { Toaster } from "./components/ui/sonner";
 import "./index.css";
 
 initSentry();
@@ -24,7 +23,6 @@ createRoot(document.getElementById("root")!).render(
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
-        <Toaster richColors position="top-right" />
       </QueryClientProvider>
     </ThemeProvider>
   </StrictMode>,
