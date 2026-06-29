@@ -2,13 +2,18 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    target-branch: develop
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
     labels: [chore, dependencies]
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
 
   - package-ecosystem: npm
     directory: /
+    target-branch: develop
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -22,3 +27,9 @@ updates:
         patterns: ["react", "react-dom", "@types/react*"]
       tanstack:
         patterns: ["@tanstack/*"]
+      production-minor-patch:
+        dependency-type: production
+        update-types: [minor, patch]
+      development-minor-patch:
+        dependency-type: development
+        update-types: [minor, patch]
