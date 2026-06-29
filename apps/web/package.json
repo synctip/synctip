@@ -41,7 +41,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@babel/core": "^7.29.7",
+    "@babel/core": "^8.0.1",
     "@rolldown/plugin-babel": "^0.2.3",
     "@tanstack/react-query-devtools": "^5.101.2",
     "@tanstack/react-router-devtools": "^1.167.0",
