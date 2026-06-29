@@ -1,0 +1,10 @@
+# Lockfiles must never be text-merged. Bun's lockfile format is not
+# line-stable across edits and three-way merges silently produce
+# duplicate-key corruption that `bun install --frozen-lockfile`
+# rejects in CI. Treat as binary so any merge conflict surfaces
+# clearly and forces manual resolution (almost always: rerun
+# `bun install` after taking one side).
+bun.lock merge=binary -diff
+
+# Keep shell scripts LF-only so they run on Linux CI runners.
+*.sh text eol=lf
