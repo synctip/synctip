@@ -201,15 +201,18 @@ export function ConnectionsCard({ user, onChanged }: Props) {
   async function linkGoogle() {
     setLinkingGoogle(true);
     try {
-      // Absolute URL — the web and api live on different origins, so a
-      // relative path would resolve against the API base.
-      const callbackURL =
+      // Absolute URLs — the web and api live on different origins, so a
+      // relative path would resolve against the API base. Without an explicit
+      // errorCallbackURL, Better-Auth falls back to the API origin on failure,
+      // which dead-ends the user on a raw `/?error=...` page (see #19).
+      const origin =
         typeof window !== "undefined"
-          ? `${window.location.origin}/dashboard`
-          : "/dashboard";
+          ? window.location.origin
+          : "";
       const { error } = await authClient.linkSocial({
         provider: "google",
-        callbackURL,
+        callbackURL: `${origin}/dashboard`,
+        errorCallbackURL: `${origin}/dashboard`,
       });
       if (error) {
         toast.error(error.message ?? "Could not start Google linking");
