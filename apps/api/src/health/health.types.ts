@@ -4,6 +4,8 @@
  * guaranteed to agree on the shape.
  */
 export type {
+  DeploymentInfo,
+  DeploymentProvider,
   EnvironmentTier,
   HealthCheck,
   HealthResponse,

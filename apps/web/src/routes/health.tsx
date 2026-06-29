@@ -1,13 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import type {
+  DeploymentInfo,
   EnvironmentTier,
   HealthCheck,
   HealthResponse,
   HealthStatus,
 } from "@synctip/api-client";
 import { ApiError } from "@synctip/api-client";
-import { RefreshCw } from "lucide-react";
+import { ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -118,9 +119,10 @@ function HealthReport({ data }: { data: HealthResponse }) {
               </span>
             )}
             {data.releaseId && (
-              <span className="text-muted-foreground font-mono text-xs font-normal">
-                build {data.releaseId}
-              </span>
+              <ReleaseIdLink
+                releaseId={data.releaseId}
+                deployment={data.deployment}
+              />
             )}
           </CardTitle>
           {data.description && (
@@ -128,8 +130,11 @@ function HealthReport({ data }: { data: HealthResponse }) {
           )}
         </CardHeader>
 
-        {(data.notes?.length || data.output) && (
+        {(data.deployment || data.notes?.length || data.output) && (
           <CardContent className="space-y-3">
+            {data.deployment && (
+              <DeploymentChips deployment={data.deployment} />
+            )}
             {data.notes && data.notes.length > 0 && (
               <ul className="flex flex-wrap gap-1.5">
                 {data.notes.map((n) => (
@@ -270,4 +275,188 @@ function formatError(err: unknown): string {
   if (err instanceof ApiError) return `${err.status} ${err.statusText}`;
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+/**
+ * Short commit SHA in the title; links to the GitHub commit when the
+ * server provided a repository + full SHA.
+ */
+function ReleaseIdLink({
+  releaseId,
+  deployment,
+}: {
+  releaseId: string;
+  deployment: DeploymentInfo | undefined;
+}) {
+  const url = commitUrl(deployment);
+  const className =
+    "text-muted-foreground font-mono text-xs font-normal hover:text-foreground hover:underline";
+  if (!url) {
+    return (
+      <span className="text-muted-foreground font-mono text-xs font-normal">
+        build {releaseId}
+      </span>
+    );
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer noopener"
+      className={className}
+    >
+      build {releaseId}
+    </a>
+  );
+}
+
+/**
+ * Renders structured deployment metadata as labeled chips. Values that
+ * have a corresponding URL (commit, branch, service, instance) render
+ * as external-link anchors.
+ */
+function DeploymentChips({ deployment }: { deployment: DeploymentInfo }) {
+  const items: {
+    label: string;
+    value: string;
+    href?: string;
+    title?: string;
+    suffix?: React.ReactNode;
+  }[] = [];
+
+  if (deployment.repository) {
+    items.push({
+      label: "repo",
+      value: deployment.repository,
+      href: `https://github.com/${deployment.repository}`,
+    });
+  }
+  if (deployment.branch) {
+    const ahead = deployment.ahead ?? 0;
+    const behind = deployment.behind ?? 0;
+    const diverged = ahead > 0 || behind > 0;
+    items.push({
+      label: "branch",
+      value: deployment.branch,
+      href: branchUrl(deployment),
+      title: deployment.upstream
+        ? `Tracking ${deployment.upstream} — ${ahead} ahead, ${behind} behind`
+        : undefined,
+      suffix: diverged ? (
+        <span
+          className="ml-1 text-amber-600 dark:text-amber-400"
+          aria-label={`${ahead} ahead, ${behind} behind upstream`}
+        >
+          {ahead > 0 && `↑${ahead}`}
+          {ahead > 0 && behind > 0 && " "}
+          {behind > 0 && `↓${behind}`}
+        </span>
+      ) : undefined,
+    });
+  }
+  if (deployment.commit) {
+    items.push({
+      label: "commit",
+      value: deployment.commit.slice(0, 7),
+      href: commitUrl(deployment),
+      title: deployment.dirty
+        ? "Working tree has uncommitted changes"
+        : undefined,
+      suffix: deployment.dirty ? (
+        <span
+          className="ml-0.5 text-amber-600 dark:text-amber-400"
+          aria-label="uncommitted changes"
+        >
+          *
+        </span>
+      ) : undefined,
+    });
+  }
+  if (deployment.serviceId) {
+    items.push({
+      label: "service",
+      value: deployment.serviceId,
+      href: serviceUrl(deployment),
+    });
+  }
+  if (deployment.instanceId) {
+    items.push({
+      label: "instance",
+      value: deployment.instanceId,
+      href: instanceUrl(deployment),
+    });
+  }
+  if (deployment.region) {
+    items.push({ label: "region", value: deployment.region });
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <ul className="flex flex-wrap gap-1.5">
+      {items.map((item) => (
+        <li
+          key={item.label}
+          title={item.title}
+          className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded px-2 py-0.5 font-mono text-xs"
+        >
+          <span className="text-muted-foreground/70">{item.label}=</span>
+          {item.href ? (
+            <a
+              href={item.href}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-foreground hover:underline"
+            >
+              {item.value}
+              <ExternalLink
+                className="ml-0.5 inline-block size-3 align-[-2px]"
+                aria-hidden
+              />
+            </a>
+          ) : (
+            <span className="text-foreground">{item.value}</span>
+          )}
+          {item.suffix}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function branchUrl(d: DeploymentInfo): string | undefined {
+  if (!d.repository || !d.branch) return undefined;
+  return `https://github.com/${d.repository}/tree/${encodeURIComponent(d.branch)}`;
+}
+
+function commitUrl(d: DeploymentInfo | undefined): string | undefined {
+  if (!d?.repository || !d.commit) return undefined;
+  return `https://github.com/${d.repository}/commit/${d.commit}`;
+}
+
+/**
+ * Render dashboard URL for the service. The path segment depends on
+ * service type — `web_service` and `static_site` are the two we use
+ * for the API and the web app respectively.
+ */
+function serviceUrl(d: DeploymentInfo): string | undefined {
+  if (d.provider !== "render" || !d.serviceId) return undefined;
+  const segment =
+    d.serviceType === "static_site"
+      ? "static"
+      : d.serviceType === "background_worker"
+        ? "worker"
+        : d.serviceType === "cron_job"
+          ? "cron"
+          : "web";
+  return `https://dashboard.render.com/${segment}/${d.serviceId}`;
+}
+
+/**
+ * Render doesn't expose per-instance dashboard pages, so link the
+ * instance chip to the service's logs view instead.
+ */
+function instanceUrl(d: DeploymentInfo): string | undefined {
+  const base = serviceUrl(d);
+  return base ? `${base}/logs` : undefined;
 }
