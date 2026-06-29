@@ -1,6 +1,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { authClient, useSession } from "@/lib/auth-client";
+import { ConnectionsCard } from "@/components/connections-card";
 import {
   Card,
   CardContent,
@@ -20,15 +21,30 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function DashboardPage() {
-  const { data: session } = useSession();
+  const { data: session, refetch } = useSession();
   const user = session?.user;
+
+  if (!user) return null;
 
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">Signed-in users only.</p>
+        <h1 className="text-3xl font-semibold tracking-tight">Profile</h1>
+        <p className="text-muted-foreground">
+          Manage how you sign in to Synctip.
+        </p>
       </div>
+
+      <ConnectionsCard
+        user={{
+          // Both fields come from the phoneNumber plugin's user-table additions.
+          phoneNumber: (user as { phoneNumber?: string | null }).phoneNumber,
+          phoneNumberVerified: (
+            user as { phoneNumberVerified?: boolean | null }
+          ).phoneNumberVerified,
+        }}
+        onChanged={() => refetch()}
+      />
 
       <Card>
         <CardHeader>

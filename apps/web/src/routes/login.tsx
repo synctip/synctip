@@ -108,9 +108,13 @@ function LoginPage() {
   }
 
   async function onGoogle() {
+    // Absolute URL so Better-Auth's server-side redirect lands on the web
+    // origin (not on the API origin) when the two are on different hosts.
+    const callbackURL =
+      typeof window !== "undefined" ? `${window.location.origin}/` : "/";
     const { error } = await authClient.signIn.social({
       provider: "google",
-      callbackURL: "/",
+      callbackURL,
     });
     if (error) toast.error(error.message ?? "Google sign-in failed");
   }

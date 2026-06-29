@@ -66,6 +66,24 @@ export const auth = betterAuth({
     },
   },
 
+  account: {
+    accountLinking: {
+      // Required because users who sign up via phone are given a temporary
+      // email (+<digits>@phone.synctip). When they later link Google, the
+      // Google email won't match — but it's still the same person.
+      allowDifferentEmails: true,
+      // The `account` table only tracks OAuth/credential entries, not the
+      // phone number (which lives on the user row). Without this, Better-Auth
+      // refuses to unlink the only OAuth account even when phone is still
+      // attached. The client guards against actual lockout.
+      allowUnlinkingAll: true,
+      // Copy the provider's display name + avatar onto the user when an
+      // account is linked. Lets a phone-signup user finally have a real
+      // name and photo after they link Google.
+      updateUserInfoOnLink: true,
+    },
+  },
+
   plugins: [
     phoneNumber({
       sendOTP: async ({ phoneNumber: to }) => {
