@@ -1,9 +1,12 @@
 name: beta-deploy-healthy
 
-# Runs after every push to `beta` (including merge commits from
-# `stage -> beta` PRs). Same probe shape as stage-deploy-healthy:
-# asserts status=pass and tier=beta, without requiring SHA equality
-# (see the comment in stage-deploy-healthy.yml for why).
+# Runs after every push to `beta`. Same two-phase shape as
+# stage-deploy-healthy; see that workflow for the design notes.
+#
+# Phase 1: verify the Render deploy for this commit reaches `live`
+#          (skipped if RENDER_API_KEY is unset, or if no deploy was
+#          triggered for this commit).
+# Phase 2: probe /health and the web origin.
 #
 # This check is the gate for `beta -> main` promotion: configure
 # branch protection on `main` to require the `beta-deploy-healthy`
@@ -22,14 +25,25 @@ jobs:
   beta-deploy-healthy:
     name: beta-deploy-healthy
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     env:
       EXPECTED_TIER: beta
       API_URL: https://api-beta.synctip.com
       WEB_URL: https://beta.synctip.com
+      API_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID_API_BETA }}
+      WEB_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID_WEB_BETA }}
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
 
     steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify Render deploy (api-beta)
+        run: bash .github/scripts/verify-render-deploy.sh api-beta "$API_SERVICE_ID" "$GITHUB_SHA"
+
+      - name: Verify Render deploy (web-beta)
+        run: bash .github/scripts/verify-render-deploy.sh web-beta "$WEB_SERVICE_ID" "$GITHUB_SHA"
+
       - name: Assert api /health
         run: |
           set -uo pipefail

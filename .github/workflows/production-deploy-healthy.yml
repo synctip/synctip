@@ -5,8 +5,8 @@ name: production-deploy-healthy
 # we get a red workflow run + notification if a release lands and the
 # production deploy doesn't come up healthy.
 #
-# Asserts status=pass and tier=production, without requiring SHA equality
-# (see the comment in stage-deploy-healthy.yml for why).
+# Same two-phase shape as stage-deploy-healthy; see that workflow for
+# the design notes.
 
 on:
   push:
@@ -21,14 +21,25 @@ jobs:
   production-deploy-healthy:
     name: production-deploy-healthy
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     env:
       EXPECTED_TIER: production
       API_URL: https://api.synctip.com
       WEB_URL: https://synctip.com
+      API_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID_API_PROD }}
+      WEB_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID_WEB_PROD }}
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
 
     steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify Render deploy (api)
+        run: bash .github/scripts/verify-render-deploy.sh api "$API_SERVICE_ID" "$GITHUB_SHA"
+
+      - name: Verify Render deploy (web)
+        run: bash .github/scripts/verify-render-deploy.sh web "$WEB_SERVICE_ID" "$GITHUB_SHA"
+
       - name: Assert api /health
         run: |
           set -uo pipefail
