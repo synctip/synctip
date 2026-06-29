@@ -11,7 +11,17 @@ function HomePage() {
   return (
     <div className="space-y-20">
       {/* Hero */}
-      <section className="space-y-6 pt-6">
+      <section className="space-y-8 pt-6">
+        <div className="flex items-center gap-3">
+          <img
+            src="/synctip-mark.svg"
+            alt="Synctip"
+            className="h-12 w-12"
+            width={48}
+            height={48}
+          />
+          <span className="text-3xl font-semibold tracking-tight">Synctip</span>
+        </div>
         <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
           Run your shifts and split your tips without the spreadsheet.
         </h1>
