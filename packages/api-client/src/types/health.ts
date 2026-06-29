@@ -17,6 +17,47 @@ export type HealthStatus = "pass" | "fail" | "warn";
  */
 export type EnvironmentTier = "production" | "beta" | "stage" | "develop";
 
+/**
+ * Hosting provider the service runs on. Determines how dashboard URLs
+ * are constructed for `serviceId` / `instanceId`.
+ */
+export type DeploymentProvider = "render" | (string & {});
+
+/**
+ * Structured deployment metadata. Clients build navigation URLs from
+ * these primitives (GitHub branch/commit, provider dashboard) without
+ * the server hard-coding URL shapes.
+ */
+export interface DeploymentInfo {
+  /** GitHub-style "owner/repo" slug. */
+  repository?: string;
+  /** Git branch the running revision was built from. */
+  branch?: string;
+  /** Full commit SHA. The short form is exposed as `releaseId`. */
+  commit?: string;
+  /** Hosting provider (used by the client to build dashboard URLs). */
+  provider?: DeploymentProvider;
+  /** Provider-scoped service identifier (e.g. Render's `srv-...`). */
+  serviceId?: string;
+  /** Provider-scoped instance identifier. */
+  instanceId?: string;
+  /** Provider service type — `web_service`, `static_site`, etc. */
+  serviceType?: string;
+  /** Provider-reported region (e.g. `oregon`). Informational. */
+  region?: string;
+  /**
+   * Working tree has uncommitted changes. Only meaningful for local
+   * development; production builds are always built from a clean tree.
+   */
+  dirty?: boolean;
+  /** Tracking branch (e.g. `origin/develop`). Local development only. */
+  upstream?: string;
+  /** Commits the local checkout has that the upstream doesn't. */
+  ahead?: number;
+  /** Commits the upstream has that the local checkout doesn't. */
+  behind?: number;
+}
+
 export interface HealthCheck {
   componentId?: string;
   componentType?: "component" | "datastore" | "system" | (string & {});
@@ -35,6 +76,8 @@ export interface HealthResponse {
   releaseId?: string;
   /** Deployment tier the service is running in (production/beta/stage/develop). */
   tier?: EnvironmentTier;
+  /** Structured deployment metadata (branch, commit, provider service IDs). */
+  deployment?: DeploymentInfo;
   notes?: string[];
   output?: string;
   checks?: Record<string, HealthCheck[]>;

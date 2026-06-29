@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { execFileSync } from 'node:child_process';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  DeploymentInfo,
   EnvironmentTier,
   HealthCheck,
   HealthResponse,
@@ -45,10 +47,21 @@ function describeError(err: unknown): string {
 
 @Injectable()
 export class HealthService {
+  /**
+   * Cached repository slug parsed from the local `origin` remote at
+   * boot. Used to populate `deployment.repository` when no provider
+   * env var (`RENDER_GIT_REPO_SLUG`, `GIT_REPOSITORY`) is present.
+   * The remote URL is effectively immutable during a process lifetime,
+   * so we read it once rather than spawning `git` on every request.
+   */
+  private readonly localRepository: string | undefined;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
-  ) {}
+  ) {
+    this.localRepository = readGitRemoteSlug();
+  }
 
   /**
    * Full health snapshot: process metrics + datastore reachability.
@@ -181,11 +194,7 @@ export class HealthService {
       ? rawTier
       : undefined;
 
-    const notes: string[] = [];
-    const branch = this.config.get<string>('RENDER_GIT_BRANCH');
-    const instance = this.config.get<string>('RENDER_INSTANCE_ID');
-    if (branch) notes.push(`branch=${branch}`);
-    if (instance) notes.push(`instance=${instance}`);
+    const deployment = this.deploymentInfo();
 
     const description = tier
       ? `synctip API health (${tier})`
@@ -197,9 +206,163 @@ export class HealthService {
       releaseId,
       serviceId,
       ...(tier ? { tier } : {}),
+      ...(deployment ? { deployment } : {}),
       description,
-      ...(notes.length > 0 ? { notes } : {}),
       checks,
     };
   }
+
+  /**
+   * Aggregate the deployment metadata Render injects into the runtime
+   * environment so clients can build rich navigation links (GitHub
+   * branch/commit, Render dashboard, etc.). Returns `undefined` when no
+   * provider-supplied data is present (e.g. local development).
+   */
+  private deploymentInfo(): DeploymentInfo | undefined {
+    const renderServiceId = this.config.get<string>('RENDER_SERVICE_ID');
+    const renderInstanceId = this.config.get<string>('RENDER_INSTANCE_ID');
+    const renderServiceType = this.config.get<string>('RENDER_SERVICE_TYPE');
+    const renderRegion = this.config.get<string>('RENDER_REGION');
+
+    // Only invoke `git` when running outside a hosted environment.
+    // Production deploys read everything from provider env vars and
+    // shouldn't pay the cost of spawning `git` on each health probe.
+    const liveGit = renderServiceId ? undefined : readLiveLocalGit();
+
+    const commit =
+      this.config.get<string>('RELEASE_ID') ??
+      this.config.get<string>('RENDER_GIT_COMMIT') ??
+      liveGit?.commit;
+    const branch =
+      this.config.get<string>('RENDER_GIT_BRANCH') ?? liveGit?.branch;
+    // RENDER_GIT_REPO_SLUG is the canonical Render value; GIT_REPOSITORY
+    // is a manual override for non-Render hosts. Falls back to the
+    // origin remote parsed from the local working tree at boot.
+    const repository =
+      this.config.get<string>('GIT_REPOSITORY') ??
+      this.config.get<string>('RENDER_GIT_REPO_SLUG') ??
+      this.localRepository;
+
+    const info: DeploymentInfo = {
+      ...(repository ? { repository } : {}),
+      ...(branch ? { branch } : {}),
+      ...(commit ? { commit } : {}),
+      ...(renderServiceId
+        ? { provider: 'render' as const, serviceId: renderServiceId }
+        : {}),
+      ...(renderInstanceId ? { instanceId: renderInstanceId } : {}),
+      ...(renderServiceType ? { serviceType: renderServiceType } : {}),
+      ...(renderRegion ? { region: renderRegion } : {}),
+      // Local-dev-only indicators: dirty working tree, divergence from
+      // the upstream tracking branch. Omitted entirely in production.
+      ...(liveGit?.dirty ? { dirty: true } : {}),
+      ...(liveGit?.upstream ? { upstream: liveGit.upstream } : {}),
+      ...(liveGit?.ahead !== undefined ? { ahead: liveGit.ahead } : {}),
+      ...(liveGit?.behind !== undefined ? { behind: liveGit.behind } : {}),
+    };
+
+    return Object.keys(info).length > 0 ? info : undefined;
+  }
+}
+
+/**
+ * Spawn `git` with stdin/stderr suppressed and return trimmed stdout,
+ * or `undefined` on any failure (git missing, not a repo, etc.).
+ */
+function runGit(args: string[]): string | undefined {
+  try {
+    return execFileSync('git', args, {
+      encoding: 'utf8',
+      timeout: 1500,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Read the repository slug from the `origin` remote URL. Called once
+ * at boot — the remote URL doesn't change during a process lifetime.
+ */
+function readGitRemoteSlug(): string | undefined {
+  const remote = runGit(['remote', 'get-url', 'origin']);
+  return remote ? parseGitHubSlug(remote) : undefined;
+}
+
+/**
+ * Read the dynamic local git state (branch, commit, working-tree
+ * cleanliness, divergence from upstream). Re-read on each health
+ * probe so the page reflects what the developer is doing right now.
+ *
+ * All sub-commands swallow errors individually; the function never
+ * throws and may return partial data (e.g. a branch with no upstream).
+ */
+function readLiveLocalGit(): {
+  branch?: string;
+  commit?: string;
+  dirty?: boolean;
+  upstream?: string;
+  ahead?: number;
+  behind?: number;
+} {
+  const branchRaw = runGit(['rev-parse', '--abbrev-ref', 'HEAD']);
+  const commit = runGit(['rev-parse', 'HEAD']);
+  // 'HEAD' indicates a detached state — not useful as a branch link.
+  const branch = branchRaw && branchRaw !== 'HEAD' ? branchRaw : undefined;
+
+  // `status --porcelain` prints one line per modified path, empty
+  // output means a clean tree. Untracked files count as dirty.
+  const status = runGit(['status', '--porcelain']);
+  const dirty = status !== undefined ? status.length > 0 : undefined;
+
+  // Upstream tracking branch, e.g. "origin/develop". Fails (no upstream)
+  // when the branch has never been pushed or has no `branch.<name>.remote`
+  // configured — in that case we omit divergence info.
+  const upstream = runGit([
+    'rev-parse',
+    '--abbrev-ref',
+    '--symbolic-full-name',
+    '@{u}',
+  ]);
+
+  let ahead: number | undefined;
+  let behind: number | undefined;
+  if (upstream) {
+    // `--left-right --count A...B` prints "<left>\t<right>" — commits
+    // reachable from A (HEAD) but not B (upstream), and vice versa.
+    const counts = runGit([
+      'rev-list',
+      '--left-right',
+      '--count',
+      'HEAD...@{u}',
+    ]);
+    const match = counts?.match(/^(\d+)\s+(\d+)$/);
+    if (match) {
+      ahead = Number(match[1]);
+      behind = Number(match[2]);
+    }
+  }
+
+  return {
+    ...(branch ? { branch } : {}),
+    ...(commit ? { commit } : {}),
+    ...(dirty !== undefined ? { dirty } : {}),
+    ...(upstream ? { upstream } : {}),
+    ...(ahead !== undefined ? { ahead } : {}),
+    ...(behind !== undefined ? { behind } : {}),
+  };
+}
+
+/**
+ * Extract a GitHub-style "owner/repo" slug from a remote URL.
+ * Handles both SSH (`git@github.com:owner/repo.git`) and
+ * HTTPS (`https://github.com/owner/repo.git`) forms; returns undefined
+ * for non-GitHub remotes.
+ */
+function parseGitHubSlug(remote: string): string | undefined {
+  const match = remote.match(
+    /github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?\/?$/i,
+  );
+  return match?.[1];
 }
