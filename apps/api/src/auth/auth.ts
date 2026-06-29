@@ -1,6 +1,7 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@synctip/db';
 import { betterAuth } from 'better-auth';
+import { APIError } from 'better-auth/api';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { phoneNumber } from 'better-auth/plugins';
 import { sendOtp, verifyOtp } from './twilio';
@@ -86,7 +87,27 @@ export const auth = betterAuth({
 
   plugins: [
     phoneNumber({
-      sendOTP: async ({ phoneNumber: to }) => {
+      sendOTP: async ({ phoneNumber: to }, ctx) => {
+        // Fail fast before billing Twilio: if a signed-in user is trying to
+        // link a phone that's already attached to a different account, reject
+        // here so we never send the SMS.
+        const existing = await prisma.user.findFirst({
+          where: { phoneNumber: to },
+          select: { id: true },
+        });
+        if (existing) {
+          // `auth` is referenced via late-binding closure; safe because hooks
+          // only run on live requests, after `auth` is fully constructed.
+          const session = await auth.api.getSession({ headers: ctx.headers });
+          if (session?.user?.id && session.user.id !== existing.id) {
+            throw new APIError('BAD_REQUEST', {
+              message:
+                'This phone number is already linked to another account.',
+            });
+          }
+          // Not signed in => normal sign-in flow for the existing user.
+          // Signed in as the same user => re-verification, allow.
+        }
         // Twilio Verify generates its own code; ignore Better-Auth's.
         await sendOtp(to);
       },
