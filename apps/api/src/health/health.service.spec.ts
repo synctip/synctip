@@ -102,7 +102,7 @@ describe('HealthService', () => {
   });
 
   it('falls back to local git metadata when no provider env vars are set', async () => {
-    const result = await service.check();
+    const result = await service.check({ role: 'owner' });
 
     // Inside the repo, the local git fallback populates these fields.
     // Tests run from inside the synctip working tree.
@@ -115,7 +115,7 @@ describe('HealthService', () => {
   });
 
   it('exposes live working-tree state (dirty / upstream divergence)', async () => {
-    const result = await service.check();
+    const result = await service.check({ role: 'owner' });
     const deployment = result.deployment;
 
     // The flag is either explicitly true/false depending on the working
@@ -151,7 +151,7 @@ describe('HealthService', () => {
     }).compile();
     const deployed = module.get(HealthService);
 
-    const result = await deployed.check();
+    const result = await deployed.check({ role: 'owner' });
 
     // Live-only indicators must never appear in a provider-hosted env.
     expect(result.deployment?.dirty).toBeUndefined();
@@ -181,7 +181,7 @@ describe('HealthService', () => {
     }).compile();
     const deployed = module.get(HealthService);
 
-    const result = await deployed.check();
+    const result = await deployed.check({ role: 'admin' });
 
     expect(result.deployment).toEqual({
       repository: 'synctip/synctip',
@@ -214,8 +214,87 @@ describe('HealthService', () => {
     }).compile();
     const overridden = module.get(HealthService);
 
-    const result = await overridden.check();
+    const result = await overridden.check({ role: 'owner' });
 
     expect(result.deployment?.repository).toBe('override/repo');
+  });
+
+  it('redacts deployment metadata + releaseId for unauthenticated callers', async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        HealthService,
+        { provide: PrismaService, useValue: prismaMock },
+        {
+          provide: ConfigService,
+          useValue: buildConfig({
+            RENDER_SERVICE_ID: 'srv-abc123',
+            RENDER_GIT_COMMIT: 'de2a5a2cafebabe',
+            RENDER_GIT_BRANCH: 'stage',
+            RENDER_GIT_REPO_SLUG: 'synctip/synctip',
+          }),
+        },
+      ],
+    }).compile();
+    const deployed = module.get(HealthService);
+
+    // No role => public caller (Render probe, external monitor, …).
+    const result = await deployed.check();
+
+    // Privileged fields stripped …
+    expect(result.deployment).toBeUndefined();
+    expect(result.releaseId).toBeUndefined();
+    // … but the endpoint still answers with a valid health doc so
+    // probes can keep checking liveness.
+    expect(result.status).toBe('pass');
+    expect(result.serviceId).toBeDefined();
+    expect(result.checks).toBeDefined();
+  });
+
+  it('redacts privileged fields for the generic "user" role', async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        HealthService,
+        { provide: PrismaService, useValue: prismaMock },
+        {
+          provide: ConfigService,
+          useValue: buildConfig({
+            RENDER_SERVICE_ID: 'srv-abc123',
+            RENDER_GIT_COMMIT: 'de2a5a2cafebabe',
+          }),
+        },
+      ],
+    }).compile();
+    const deployed = module.get(HealthService);
+
+    const result = await deployed.check({ role: 'user' });
+
+    // 'user' is authenticated but unprivileged — must not see deploy info.
+    expect(result.deployment).toBeUndefined();
+    expect(result.releaseId).toBeUndefined();
+  });
+
+  it('liveness honours the role-based redaction', async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        HealthService,
+        { provide: PrismaService, useValue: prismaMock },
+        {
+          provide: ConfigService,
+          useValue: buildConfig({
+            RENDER_SERVICE_ID: 'srv-abc123',
+            RENDER_GIT_COMMIT: 'de2a5a2cafebabe',
+          }),
+        },
+      ],
+    }).compile();
+    const deployed = module.get(HealthService);
+
+    const publicResult = deployed.liveness();
+    expect(publicResult.deployment).toBeUndefined();
+    expect(publicResult.releaseId).toBeUndefined();
+
+    const ownerResult = deployed.liveness({ role: 'owner' });
+    expect(ownerResult.deployment).toBeDefined();
+    expect(ownerResult.releaseId).toBe('de2a5a2');
   });
 });

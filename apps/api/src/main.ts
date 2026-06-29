@@ -5,6 +5,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { toNodeHandler } from 'better-auth/node';
+import type { NextFunction, Request, Response } from 'express';
 import { json, urlencoded } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
@@ -38,10 +39,31 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
 
-  // Mount Better-Auth at /auth/*. Better-Auth derives its internal route
-  // prefix from `new URL(AUTH_BASE_URL).pathname`, so `AUTH_BASE_URL` must
-  // end in `/auth` for this to match.
-  app.use('/auth', toNodeHandler(auth));
+  // Mount Better-Auth at /auth/*.
+  //
+  // We register it as a plain middleware (no Express path matching) and
+  // dispatch by hand on the URL prefix. Two pitfalls this avoids:
+  //
+  //  1. `app.use('/auth', handler)` rewrites `req.url` to strip the
+  //     mount prefix. Better-Auth's internal router then sees
+  //     `/get-session` instead of `/auth/get-session`, fails its
+  //     `basePath` check, and 404s every route.
+  //
+  //  2. `app.all('/auth/*splat', handler)` on Nest 11 + Express 5 +
+  //     path-to-regexp v8 registers without error but never matches
+  //     (likely a Nest-vs-Express router interaction).
+  //
+  // Note: `AUTH_BASE_URL` must point at the API origin (e.g.
+  // `http://localhost:3000/auth`), NOT the web origin. Better-Auth
+  // compares the incoming request URL's origin against the configured
+  // `baseURL` and silently 404s on a mismatch.
+  const authHandler = toNodeHandler(auth);
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.url === '/auth' || req.url.startsWith('/auth/')) {
+      return authHandler(req, res);
+    }
+    return next();
+  });
 
   // Re-enable JSON / form body parsing for every other route.
   app.use(json());

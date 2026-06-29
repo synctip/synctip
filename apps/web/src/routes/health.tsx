@@ -132,7 +132,9 @@ function HealthReport({ data }: { data: HealthResponse }) {
 
         {(data.deployment || data.notes?.length || data.output) && (
           <CardContent className="space-y-3">
-            {data.deployment && <DeploymentChips deployment={data.deployment} />}
+            {data.deployment && (
+              <DeploymentChips deployment={data.deployment} />
+            )}
             {data.notes && data.notes.length > 0 && (
               <ul className="flex flex-wrap gap-1.5">
                 {data.notes.map((n) => (
@@ -297,7 +299,12 @@ function ReleaseIdLink({
     );
   }
   return (
-    <a href={url} target="_blank" rel="noreferrer noopener" className={className}>
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer noopener"
+      className={className}
+    >
       build {releaseId}
     </a>
   );

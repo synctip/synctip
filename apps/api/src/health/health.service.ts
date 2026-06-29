@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { execFileSync } from 'node:child_process';
+import { isPrivileged, type Role } from '../auth/roles';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   DeploymentInfo,
@@ -66,14 +67,22 @@ export class HealthService {
   /**
    * Full health snapshot: process metrics + datastore reachability.
    * Suitable for `/health` and as a readiness probe.
+   *
+   * `opts.role` controls how much detail the response carries:
+   *   - owner / admin  → full deployment metadata (commit, instanceId, …)
+   *   - user / public  → status + checks only; privileged fields stripped
+   *
+   * The endpoint must stay reachable for monitoring probes either way,
+   * so unauthenticated callers always get a valid (if minimal) response
+   * rather than 401/403.
    */
-  async check(): Promise<HealthResponse> {
+  async check(opts: { role?: Role } = {}): Promise<HealthResponse> {
     const checks: Record<string, HealthCheck[]> = {
       ...this.systemChecks(),
       ...(await this.datastoreChecks()),
     };
 
-    return this.buildResponse(this.aggregate(checks), checks);
+    return this.buildResponse(this.aggregate(checks), checks, opts.role);
   }
 
   /**
@@ -81,17 +90,17 @@ export class HealthService {
    * Intentionally does NOT touch the database so a flaky DB
    * does not cause Kubernetes to restart the pod.
    */
-  liveness(): HealthResponse {
+  liveness(opts: { role?: Role } = {}): HealthResponse {
     const checks = this.systemChecks();
-    return this.buildResponse(this.aggregate(checks), checks);
+    return this.buildResponse(this.aggregate(checks), checks, opts.role);
   }
 
   /**
    * Readiness check — answers "should we send traffic here?".
    * Includes downstream datastore checks.
    */
-  async readiness(): Promise<HealthResponse> {
-    return this.check();
+  async readiness(opts: { role?: Role } = {}): Promise<HealthResponse> {
+    return this.check(opts);
   }
 
   private async datastoreChecks(): Promise<Record<string, HealthCheck[]>> {
@@ -172,6 +181,7 @@ export class HealthService {
   private buildResponse(
     status: HealthStatus,
     checks: Record<string, HealthCheck[]>,
+    role: Role | undefined,
   ): HealthResponse {
     // Prefer explicit overrides, then fall back to whatever the host
     // (Render) injects, then sensible defaults.
@@ -194,16 +204,21 @@ export class HealthService {
       ? rawTier
       : undefined;
 
-    const deployment = this.deploymentInfo();
-
     const description = tier
       ? `synctip API health (${tier})`
       : 'synctip API health';
 
+    // Privileged fields — exposed only to owner/admin sessions. These
+    // reveal the running commit and provider-scoped IDs that could be
+    // used to fingerprint or target the deployment. Monitoring probes
+    // don't need them; the response stays a valid IETF health doc.
+    const privileged = isPrivileged(role);
+    const deployment = privileged ? this.deploymentInfo() : undefined;
+
     return {
       status,
       version: this.config.get<string>('SERVICE_VERSION') ?? '1',
-      releaseId,
+      ...(privileged ? { releaseId } : {}),
       serviceId,
       ...(tier ? { tier } : {}),
       ...(deployment ? { deployment } : {}),

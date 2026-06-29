@@ -61,6 +61,13 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
 
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetchImpl(`${baseUrl}${path}`, {
+      // Always send credentials. The API is on a different origin than the
+      // web app in every real environment (dev, stage, beta, prod), and
+      // privileged endpoints like /health rely on the better-auth session
+      // cookie to identify owner / admin callers. Without `include`, the
+      // browser silently strips the cookie on cross-origin requests and
+      // every caller looks unauthenticated.
+      credentials: "include",
       ...init,
       headers: {
         Accept: "application/json, application/health+json",

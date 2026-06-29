@@ -39,6 +39,27 @@ export const auth = betterAuth({
     ipAddress: {
       ipAddressHeaders: ['x-forwarded-for'],
     },
+    // Web and API live on different subdomains of synctip.com
+    // (e.g. dev.synctip.com calls api-dev.synctip.com). We need:
+    //   1. The cookie's Domain attribute set to the shared parent so the
+    //      browser will send it on both subdomains.
+    //   2. SameSite=None + Secure so the browser will attach it to
+    //      cross-site fetches at all (modern browsers block SameSite=Lax
+    //      cookies on cross-origin XHR even between same-parent hosts).
+    //
+    // AUTH_COOKIE_DOMAIN should be set per environment, e.g.
+    //   .synctip.com    for dev / stage / beta / prod
+    //   (unset)         for plain localhost (cookie defaults to host-only)
+    crossSubDomainCookies: process.env.AUTH_COOKIE_DOMAIN
+      ? {
+          enabled: true,
+          domain: process.env.AUTH_COOKIE_DOMAIN,
+        }
+      : { enabled: false },
+    defaultCookieAttributes: {
+      sameSite: 'none',
+      secure: true,
+    },
   },
 
   // List of trusted origins that may receive Set-Cookie + send credentialed
