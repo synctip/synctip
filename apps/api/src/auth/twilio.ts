@@ -32,7 +32,7 @@ export async function sendOtp(phoneNumber: string): Promise<void> {
   const client = new Twilio(cfg.sid, cfg.token);
   await client.verify.v2
     .services(cfg.serviceSid)
-    .verifications.create({ to: phoneNumber, channel: 'sms' });
+    .verifications.create({ to: phoneNumber, channel: 'sms', locale: 'he' });
 }
 
 export async function verifyOtp(
