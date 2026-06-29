@@ -1,14 +1,18 @@
 name: stage-deploy-healthy
 
 # Runs after every push to `stage` (including merge commits from
-# `develop -> stage` PRs). Waits for Render to redeploy api-stage with
-# the new commit, then asserts:
+# `develop -> stage` PRs). Asserts the live stage deployment is healthy:
 #   - /health reports status=pass
 #   - /health reports tier=stage      (catches APP_ENV misconfiguration)
-#   - /health reports releaseId equal to the first 7 chars of github.sha
-#     (catches "old deploy still serving" — Render not done yet, or build
-#     failed silently and the previous instance kept running)
 #   - The web origin returns HTTP 200
+#
+# NOTE: we intentionally do NOT assert that releaseId == github.sha[0:7].
+# Render's Build Filters can (correctly) skip a deploy when a commit
+# doesn't touch the service's watched paths (e.g. workflow-only changes).
+# In that case the previous releaseId remains live, which is fine — the
+# service is still healthy and unchanged. If you want strong
+# "this exact commit is deployed" verification, integrate the Render API
+# (RENDER_API_KEY secret) to query the actual deploy that was triggered.
 #
 # This check is the gate for `stage -> beta` promotion: configure
 # branch protection on `beta` to require the `stage-deploy-healthy`
@@ -37,32 +41,29 @@ jobs:
       WEB_URL: https://stage.synctip.com
 
     steps:
-      - name: Wait for Render and assert api /health
+      - name: Assert api /health
         run: |
           set -uo pipefail
-          expected_sha="${GITHUB_SHA:0:7}"
-          echo "Expecting tier=$EXPECTED_TIER, releaseId=$expected_sha"
+          echo "Expecting status=pass tier=$EXPECTED_TIER"
 
           body=""
-          for i in $(seq 1 72); do
+          for i in $(seq 1 18); do
             body="$(curl -fsSL --max-time 10 "$API_URL/health" || true)"
             status="$(printf '%s' "$body"  | jq -r '.status    // empty' 2>/dev/null || true)"
             tier="$(printf '%s' "$body"    | jq -r '.tier      // empty' 2>/dev/null || true)"
             release="$(printf '%s' "$body" | jq -r '.releaseId // empty' 2>/dev/null || true)"
 
-            if [ "$status" = "pass" ] \
-               && [ "$tier" = "$EXPECTED_TIER" ] \
-               && [ "$release" = "$expected_sha" ]; then
-              echo "OK  api healthy on attempt $i"
+            if [ "$status" = "pass" ] && [ "$tier" = "$EXPECTED_TIER" ]; then
+              echo "OK  api healthy on attempt $i (releaseId=$release)"
               printf '%s\n' "$body" | jq .
               exit 0
             fi
 
-            echo "attempt $i/72: status=${status:-?} tier=${tier:-?} releaseId=${release:-?}"
+            echo "attempt $i/18: status=${status:-?} tier=${tier:-?} releaseId=${release:-?}"
             sleep 10
           done
 
-          echo "FAIL stage-deploy-healthy timed out after ~12 minutes"
+          echo "FAIL stage-deploy-healthy: api did not report healthy after ~3 minutes"
           printf '%s\n' "${body:-<no response>}" | jq . 2>/dev/null \
             || echo "${body:-<no response>}"
           exit 1

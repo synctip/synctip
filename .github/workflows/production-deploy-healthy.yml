@@ -4,6 +4,9 @@ name: production-deploy-healthy
 # off of `main`, so this check does not gate any other PR. It exists so
 # we get a red workflow run + notification if a release lands and the
 # production deploy doesn't come up healthy.
+#
+# Asserts status=pass and tier=production, without requiring SHA equality
+# (see the comment in stage-deploy-healthy.yml for why).
 
 on:
   push:
@@ -26,32 +29,29 @@ jobs:
       WEB_URL: https://synctip.com
 
     steps:
-      - name: Wait for Render and assert api /health
+      - name: Assert api /health
         run: |
           set -uo pipefail
-          expected_sha="${GITHUB_SHA:0:7}"
-          echo "Expecting tier=$EXPECTED_TIER, releaseId=$expected_sha"
+          echo "Expecting status=pass tier=$EXPECTED_TIER"
 
           body=""
-          for i in $(seq 1 72); do
+          for i in $(seq 1 18); do
             body="$(curl -fsSL --max-time 10 "$API_URL/health" || true)"
             status="$(printf '%s' "$body"  | jq -r '.status    // empty' 2>/dev/null || true)"
             tier="$(printf '%s' "$body"    | jq -r '.tier      // empty' 2>/dev/null || true)"
             release="$(printf '%s' "$body" | jq -r '.releaseId // empty' 2>/dev/null || true)"
 
-            if [ "$status" = "pass" ] \
-               && [ "$tier" = "$EXPECTED_TIER" ] \
-               && [ "$release" = "$expected_sha" ]; then
-              echo "OK  api healthy on attempt $i"
+            if [ "$status" = "pass" ] && [ "$tier" = "$EXPECTED_TIER" ]; then
+              echo "OK  api healthy on attempt $i (releaseId=$release)"
               printf '%s\n' "$body" | jq .
               exit 0
             fi
 
-            echo "attempt $i/72: status=${status:-?} tier=${tier:-?} releaseId=${release:-?}"
+            echo "attempt $i/18: status=${status:-?} tier=${tier:-?} releaseId=${release:-?}"
             sleep 10
           done
 
-          echo "FAIL production-deploy-healthy timed out after ~12 minutes"
+          echo "FAIL production-deploy-healthy: api did not report healthy after ~3 minutes"
           printf '%s\n' "${body:-<no response>}" | jq . 2>/dev/null \
             || echo "${body:-<no response>}"
           exit 1

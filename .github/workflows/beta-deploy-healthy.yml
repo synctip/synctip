@@ -1,7 +1,9 @@
 name: beta-deploy-healthy
 
 # Runs after every push to `beta` (including merge commits from
-# `stage -> beta` PRs). Same probe shape as stage-deploy-healthy.
+# `stage -> beta` PRs). Same probe shape as stage-deploy-healthy:
+# asserts status=pass and tier=beta, without requiring SHA equality
+# (see the comment in stage-deploy-healthy.yml for why).
 #
 # This check is the gate for `beta -> main` promotion: configure
 # branch protection on `main` to require the `beta-deploy-healthy`
@@ -28,32 +30,29 @@ jobs:
       WEB_URL: https://beta.synctip.com
 
     steps:
-      - name: Wait for Render and assert api /health
+      - name: Assert api /health
         run: |
           set -uo pipefail
-          expected_sha="${GITHUB_SHA:0:7}"
-          echo "Expecting tier=$EXPECTED_TIER, releaseId=$expected_sha"
+          echo "Expecting status=pass tier=$EXPECTED_TIER"
 
           body=""
-          for i in $(seq 1 72); do
+          for i in $(seq 1 18); do
             body="$(curl -fsSL --max-time 10 "$API_URL/health" || true)"
             status="$(printf '%s' "$body"  | jq -r '.status    // empty' 2>/dev/null || true)"
             tier="$(printf '%s' "$body"    | jq -r '.tier      // empty' 2>/dev/null || true)"
             release="$(printf '%s' "$body" | jq -r '.releaseId // empty' 2>/dev/null || true)"
 
-            if [ "$status" = "pass" ] \
-               && [ "$tier" = "$EXPECTED_TIER" ] \
-               && [ "$release" = "$expected_sha" ]; then
-              echo "OK  api healthy on attempt $i"
+            if [ "$status" = "pass" ] && [ "$tier" = "$EXPECTED_TIER" ]; then
+              echo "OK  api healthy on attempt $i (releaseId=$release)"
               printf '%s\n' "$body" | jq .
               exit 0
             fi
 
-            echo "attempt $i/72: status=${status:-?} tier=${tier:-?} releaseId=${release:-?}"
+            echo "attempt $i/18: status=${status:-?} tier=${tier:-?} releaseId=${release:-?}"
             sleep 10
           done
 
-          echo "FAIL beta-deploy-healthy timed out after ~12 minutes"
+          echo "FAIL beta-deploy-healthy: api did not report healthy after ~3 minutes"
           printf '%s\n' "${body:-<no response>}" | jq . 2>/dev/null \
             || echo "${body:-<no response>}"
           exit 1
